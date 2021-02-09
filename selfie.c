@@ -10539,6 +10539,7 @@ uint64_t selfie(uint64_t extras) {
   if (number_of_remaining_arguments() == 0)
     return EXITCODE_NOARGUMENTS;
   else {
+    printf1("%s: This is Jan Jecmen's Selfie\n", selfie_name);
     printf2("%s: this is the selfie system from %s with\n", selfie_name, SELFIE_URL);
     printf3("%s: %u-bit unsigned integers and %u-bit pointers on boot level ", selfie_name,
       (char*) SIZEOFUINT64INBITS,
