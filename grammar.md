@@ -15,7 +15,16 @@ C\* Symbols: `integer_literal`, `character_literal`, `string_literal`, `identifi
 with:
 
 ```
-integer_literal   = digit { digit } .
+binary_integer_literal = ( "0b" | "0B" ) binary_digit { binary_digit } .
+
+octal_integer_literal = ( "0o" | "0O" ) { octal_digit } .
+
+decimal_integer_literal = decimal_digit { decimal_digit } .
+
+hexadecimal_integer_literal = ( "0x" | "0X" ) hexadecimal_digit { hexadecimal_digit } .
+
+integer_literal   = binary_integer_literal | octal_integer_literal |
+                      decimal_integer_literal | hexadecimal_integer_literal .
 
 character_literal = "'" printable_character "'" .
 
@@ -27,7 +36,13 @@ identifier        = letter { letter | digit | "_" } .
 and:
 
 ```
-digit  = "0" | ... | "9" .
+binary_digit  = "0" | "1" .
+
+octal_digit  = "0" | ... | "7" .
+
+decimal_digit  = "0" | ... | "9" .
+
+hexadecimal_digit  = "0" | ... | "9" | "a" | ... | "f" | "A" | ... | "F" .
 
 letter = "a" | ... | "z" | "A" | ... | "Z" .
 ```

@@ -137,7 +137,7 @@ char*    string_copy(char* s);
 void     string_reverse(char* s);
 uint64_t string_compare(char* s, char* t);
 
-uint64_t atoi(char* s);
+uint64_t atoi(char* s, uint64_t base);
 char*    itoa(uint64_t n, char* s, uint64_t b, uint64_t d, uint64_t a);
 
 uint64_t fixed_point_ratio(uint64_t a, uint64_t b, uint64_t f);
@@ -361,7 +361,7 @@ uint64_t is_character_whitespace();
 uint64_t find_next_character();
 
 uint64_t is_character_letter();
-uint64_t is_character_digit();
+uint64_t is_character_digit(uint64_t base);
 uint64_t is_character_letter_or_digit_or_underscore();
 uint64_t is_character_not_double_quote_or_new_line_or_eof();
 
@@ -375,6 +375,11 @@ void handle_escape_sequence();
 // ------------------------ GLOBAL CONSTANTS -----------------------
 
 uint64_t SYM_EOF = -1; // end of file
+
+uint64_t BASE_BINARY      = 2;
+uint64_t BASE_OCTAL       = 8;
+uint64_t BASE_DECIMAL     = 10;
+uint64_t BASE_HEXADECIMAL = 16;
 
 // C* symbols
 
@@ -2414,10 +2419,21 @@ uint64_t string_compare(char* s, char* t) {
       return 0;
 }
 
-uint64_t atoi(char* s) {
+uint64_t atoi(char* s, uint64_t base) {
   uint64_t i;
   uint64_t n;
   uint64_t c;
+
+  if (base != BASE_BINARY) {
+    if (base != BASE_OCTAL) {
+      if (base != BASE_DECIMAL) {
+        if (base != BASE_HEXADECIMAL) {
+          printf2("%s: invalid base for number %s\n", selfie_name, s);
+          exit(EXITCODE_SCANNERERROR);
+        }
+      }
+    }
+  }
 
   // the conversion of the ASCII string in s to its
   // numerical value n begins with the leftmost digit in s
@@ -2434,22 +2450,48 @@ uint64_t atoi(char* s) {
   while (c != 0) {
     // the numerical value of ASCII-encoded decimal digits
     // is offset by the ASCII code of '0' (which is 48)
-    c = c - '0';
-
-    if (c > 9) {
-      printf2("%s: cannot convert non-decimal number %s\n", selfie_name, s);
-
-      exit(EXITCODE_SCANNERERROR);
+    if (base == BASE_HEXADECIMAL) {
+      if (c >= 'a') {
+        c = c - 'a' + 10;
+      } else if (c >= 'A') {
+        c = c - 'A' + 10;
+      } else {
+        c = c - '0';
+      }
+    } else {
+      c = c - '0';
     }
 
-    // assert: s contains a decimal number
+    if (base == BASE_BINARY) {
+      if (c > 1) {
+        printf2("%s: cannot convert non-binary number %s\n", selfie_name, s);
+        exit(EXITCODE_SCANNERERROR);
+      }
+    } else if (base == BASE_OCTAL) {
+      if (c > 7) {
+        printf2("%s: cannot convert non-octal number %s\n", selfie_name, s);
+        exit(EXITCODE_SCANNERERROR);
+      }
+    } else if (base == BASE_DECIMAL) {
+      if (c > 9) {
+        printf2("%s: cannot convert non-decimal number %s\n", selfie_name, s);
+        exit(EXITCODE_SCANNERERROR);
+      }
+    } else if (base == BASE_HEXADECIMAL) {
+      if (c > 15) {
+        printf2("%s: cannot convert non-hexadecimal number %s\n", selfie_name, s);
+        exit(EXITCODE_SCANNERERROR);
+      }
+    }
 
-    // use base 10 but detect wrap around
-    if (n < UINT64_MAX / 10)
-      n = n * 10 + c;
-    else if (n == UINT64_MAX / 10)
-      if (c <= UINT64_MAX % 10)
-        n = n * 10 + c;
+    // assert: s contains a number in base 2 or 8 or 10 or 16
+
+    // detect wrap around
+    if (n < UINT64_MAX / base)
+      n = n * base + c;
+    else if (n == UINT64_MAX / base)
+      if (c <= UINT64_MAX % base)
+        n = n * base + c;
       else {
         // s contains a decimal number larger than UINT64_MAX
         printf2("%s: cannot convert out-of-bound number %s\n", selfie_name, s);
@@ -3193,21 +3235,41 @@ uint64_t is_character_letter() {
     return 0;
 }
 
-uint64_t is_character_digit() {
+uint64_t is_character_digit(uint64_t base) {
   // ASCII codes for digits are in a contiguous interval
-  if (character >= '0')
-    if (character <= '9')
-      return 1;
-    else
-      return 0;
-  else
-    return 0;
+  if (base == BASE_BINARY) {
+    if (character >= '0')
+      if (character <= '1')
+        return 1;
+  } else if (base == BASE_OCTAL) {
+    if (character >= '0')
+      if (character <= '7')
+        return 1;
+  } else if (base == BASE_DECIMAL) {
+    if (character >= '0')
+      if (character <= '9')
+        return 1;
+  } else if (base == BASE_HEXADECIMAL) {
+    if (character >= '0') {
+      if (character <= '9')
+        return 1;
+    }
+    if (character >= 'a') {
+      if (character <= 'f')
+        return 1;
+    }
+    if (character >= 'A') {
+      if (character <= 'F')
+        return 1;
+    }
+  }
+  return 0;
 }
 
 uint64_t is_character_letter_or_digit_or_underscore() {
   if (is_character_letter())
     return 1;
-  else if (is_character_digit())
+  else if (is_character_digit(BASE_DECIMAL))
     return 1;
   else if (character == CHAR_UNDERSCORE)
     return 1;
@@ -3258,6 +3320,7 @@ uint64_t identifier_or_keyword() {
 
 void get_symbol() {
   uint64_t i;
+  uint64_t base;
 
   // reset previously scanned symbol
   symbol = SYM_EOF;
@@ -3290,13 +3353,64 @@ void get_symbol() {
 
         symbol = identifier_or_keyword();
 
-      } else if (is_character_digit()) {
+      } else if (is_character_digit(BASE_DECIMAL)) {
         // accommodate integer and null for termination
         integer = string_alloc(MAX_INTEGER_LENGTH);
 
         i = 0;
+        base = BASE_DECIMAL;
 
-        while (is_character_digit()) {
+        if (character == '0') {
+          get_character();
+          if ((character == 'b') + (character == 'B')) {
+            base = BASE_BINARY;
+            get_character();
+            if (is_character_letter() == 0) {
+              if (is_character_digit(BASE_HEXADECIMAL) == 0) {
+                syntax_error_message("malformed binary literal");
+                exit(EXITCODE_SCANNERERROR);
+              }
+            }
+            if (character == CHAR_EOF) {
+              syntax_error_message("malformed binary literal");
+              exit(EXITCODE_SCANNERERROR);
+            }
+          } else if ((character == 'o') + (character == 'O')) {
+            base = BASE_OCTAL;
+            get_character();
+            if (is_character_letter() == 0) {
+              if (is_character_digit(BASE_HEXADECIMAL) == 0) {
+                syntax_error_message("malformed octal literal");
+                exit(EXITCODE_SCANNERERROR);
+              }
+            }
+            if (character == CHAR_EOF) {
+              syntax_error_message("malformed octal literal");
+              exit(EXITCODE_SCANNERERROR);
+            }
+          } else if ((character == 'x') + (character == 'X')) {
+            base = BASE_HEXADECIMAL;
+            get_character();
+            if (is_character_letter() == 0) {
+              if (is_character_digit(BASE_HEXADECIMAL) == 0) {
+                syntax_error_message("malformed hexadecimal literal");
+                exit(EXITCODE_SCANNERERROR);
+              }
+            }
+            if (character == CHAR_EOF) {
+              syntax_error_message("malformed hexadecimal literal");
+              exit(EXITCODE_SCANNERERROR);
+            }
+          } else {
+            store_character(integer, i, '0');
+            i = i + 1;
+          }
+        }
+
+        // hack... take any string of letters+digits as the same literal so that
+        // the checking in atoi triggers... otherwise we would need to do the checks
+        // here?
+        while (is_character_letter() + is_character_digit(BASE_HEXADECIMAL)) {
           if (i >= MAX_INTEGER_LENGTH) {
             if (integer_is_signed)
               syntax_error_message("signed integer out of bound");
@@ -3315,7 +3429,7 @@ void get_symbol() {
 
         store_character(integer, i, 0); // null-terminated string
 
-        literal = atoi(integer);
+        literal = atoi(integer, base);
 
         if (integer_is_signed)
           if (literal > INT64_MIN) {
@@ -10410,7 +10524,7 @@ uint64_t selfie_run(uint64_t machine) {
   reset_profiler();
   reset_microkernel();
 
-  init_memory(atoi(peek_argument(0)));
+  init_memory(atoi(peek_argument(0), BASE_DECIMAL));
 
   current_context = create_context(MY_CONTEXT, 0);
 
