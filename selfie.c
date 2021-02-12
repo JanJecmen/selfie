@@ -233,6 +233,10 @@ uint64_t CHAR_EXCLAMATION = '!';
 uint64_t CHAR_LT = '<';
 uint64_t CHAR_GT = '>';
 uint64_t CHAR_BACKSLASH = 92; // ASCII code 92 = backslash
+uint64_t CHAR_VBAR = '|';
+uint64_t CHAR_AMPERSAND = '&';
+uint64_t CHAR_CIRCUMFLEX = '^';
+uint64_t CHAR_TILDE = '~';
 
 uint64_t* character_buffer; // buffer for reading and writing characters
 
@@ -416,12 +420,21 @@ uint64_t SYM_LT = 24;           // <
 uint64_t SYM_LEQ = 25;          // <=
 uint64_t SYM_GT = 26;           // >
 uint64_t SYM_GEQ = 27;          // >=
+uint64_t SYM_LOR = 28;          // ||
+uint64_t SYM_LAND = 29;         // &&
+uint64_t SYM_OR = 30;           // |
+uint64_t SYM_XOR = 31;          // ^
+uint64_t SYM_AND = 32;          // &
+uint64_t SYM_SHL = 33;          // <<
+uint64_t SYM_SHR = 34;          // >>
+uint64_t SYM_LNOT = 35;         // !
+uint64_t SYM_NOT = 36;          // ~
 
 // symbols for bootstrapping
 
-uint64_t SYM_INT = 28;      // int
-uint64_t SYM_CHAR = 29;     // char
-uint64_t SYM_UNSIGNED = 30; // unsigned
+uint64_t SYM_INT = 37;      // int
+uint64_t SYM_CHAR = 38;     // char
+uint64_t SYM_UNSIGNED = 39; // unsigned
 
 uint64_t* SYMBOLS; // strings representing symbols
 
@@ -491,6 +504,15 @@ void init_scanner() {
     *(SYMBOLS + SYM_LEQ) = (uint64_t) "<=";
     *(SYMBOLS + SYM_GT) = (uint64_t) ">";
     *(SYMBOLS + SYM_GEQ) = (uint64_t) ">=";
+    *(SYMBOLS + SYM_LOR) = (uint64_t) "||";
+    *(SYMBOLS + SYM_LAND) = (uint64_t) "&&";
+    *(SYMBOLS + SYM_OR) = (uint64_t) "|";
+    *(SYMBOLS + SYM_XOR) = (uint64_t) "^";
+    *(SYMBOLS + SYM_AND) = (uint64_t) "&";
+    *(SYMBOLS + SYM_SHL) = (uint64_t) "<<";
+    *(SYMBOLS + SYM_SHR) = (uint64_t) ">>";
+    *(SYMBOLS + SYM_LNOT) = (uint64_t) "!";
+    *(SYMBOLS + SYM_NOT) = (uint64_t) "~";
 
     *(SYMBOLS + SYM_INT) = (uint64_t) "int";
     *(SYMBOLS + SYM_CHAR) = (uint64_t) "char";
@@ -631,7 +653,9 @@ uint64_t is_expression();
 uint64_t is_int_or_char_literal();
 uint64_t is_mult_or_div_or_rem();
 uint64_t is_plus_or_minus();
-uint64_t is_comparison();
+uint64_t is_left_or_right_shift();
+uint64_t is_eq_comparison();
+uint64_t is_lt_comparison();
 
 uint64_t look_for_factor();
 uint64_t look_for_statement();
@@ -667,6 +691,14 @@ uint64_t compile_call(char* procedure);
 uint64_t compile_factor();
 uint64_t compile_term();
 uint64_t compile_simple_expression();
+uint64_t compile_shift_expression();
+uint64_t compile_r_lt_expression();
+uint64_t compile_r_eq_expression();
+uint64_t compile_b_and_expression();
+uint64_t compile_b_xor_expression();
+uint64_t compile_b_or_expression();
+uint64_t compile_l_and_expression();
+uint64_t compile_l_or_expression();
 uint64_t compile_expression();
 void compile_while();
 void compile_if();
@@ -3744,6 +3776,36 @@ void get_symbol() {
 
                 symbol = SYM_REMAINDER;
 
+            } else if (character == CHAR_CIRCUMFLEX) {
+                get_character();
+
+                symbol = SYM_XOR;
+
+            } else if (character == CHAR_TILDE) {
+                get_character();
+
+                symbol = SYM_NOT;
+
+            } else if (character == CHAR_VBAR) {
+                get_character();
+
+                if (character == CHAR_VBAR) {
+                    get_character();
+
+                    symbol = SYM_LOR;
+                } else
+                    symbol = SYM_OR;
+
+            } else if (character == CHAR_AMPERSAND) {
+                get_character();
+
+                if (character == CHAR_AMPERSAND) {
+                    get_character();
+
+                    symbol = SYM_LAND;
+                } else
+                    symbol = SYM_AND;
+
             } else if (character == CHAR_EQUAL) {
                 get_character();
 
@@ -3757,12 +3819,12 @@ void get_symbol() {
             } else if (character == CHAR_EXCLAMATION) {
                 get_character();
 
-                if (character == CHAR_EQUAL)
+                if (character == CHAR_EQUAL) {
                     get_character();
-                else
-                    syntax_error_character(CHAR_EQUAL);
 
-                symbol = SYM_NOTEQ;
+                    symbol = SYM_NOTEQ;
+                } else
+                    symbol = SYM_LNOT;
 
             } else if (character == CHAR_LT) {
                 get_character();
@@ -3771,6 +3833,10 @@ void get_symbol() {
                     get_character();
 
                     symbol = SYM_LEQ;
+                } else if (character == CHAR_LT) {
+                    get_character();
+
+                    symbol = SYM_SHL;
                 } else
                     symbol = SYM_LT;
 
@@ -3781,6 +3847,10 @@ void get_symbol() {
                     get_character();
 
                     symbol = SYM_GEQ;
+                } else if (character == CHAR_GT) {
+                    get_character();
+
+                    symbol = SYM_SHR;
                 } else
                     symbol = SYM_GT;
 
@@ -4035,27 +4105,43 @@ uint64_t is_plus_or_minus() {
         return 0;
 }
 
-uint64_t is_comparison() {
-    if (symbol == SYM_EQUALITY)
+uint64_t is_left_or_right_shift() {
+    if (symbol == SYM_SHL)
         return 1;
-    else if (symbol == SYM_NOTEQ)
-        return 1;
-    else if (symbol == SYM_LT)
-        return 1;
-    else if (symbol == SYM_GT)
-        return 1;
-    else if (symbol == SYM_LEQ)
-        return 1;
-    else if (symbol == SYM_GEQ)
+    else if (symbol == SYM_SHR)
         return 1;
     else
         return 0;
+}
+
+uint64_t is_eq_comparison() {
+    if (symbol == SYM_EQUALITY)
+        return 1;
+    if (symbol == SYM_NOTEQ)
+        return 1;
+    return 0;
+}
+
+uint64_t is_lt_comparison() {
+    if (symbol == SYM_LT)
+        return 1;
+    if (symbol == SYM_GT)
+        return 1;
+    if (symbol == SYM_LEQ)
+        return 1;
+    if (symbol == SYM_GEQ)
+        return 1;
+    return 0;
 }
 
 uint64_t look_for_factor() {
     if (symbol == SYM_ASTERISK)
         return 0;
     else if (symbol == SYM_MINUS)
+        return 0;
+    else if (symbol == SYM_NOT)
+        return 0;
+    else if (symbol == SYM_LNOT)
         return 0;
     else if (symbol == SYM_IDENTIFIER)
         return 0;
@@ -4522,11 +4608,7 @@ uint64_t compile_call(char* procedure) {
 }
 
 uint64_t compile_factor() {
-    uint64_t has_cast;
-    uint64_t cast;
     uint64_t type;
-    uint64_t negative;
-    uint64_t dereference;
     char* variable_or_procedure_name;
 
     // assert: n = allocated_temporaries
@@ -4540,59 +4622,75 @@ uint64_t compile_factor() {
             get_symbol();
     }
 
-    // optional: [ cast ]
     if (symbol == SYM_LPARENTHESIS) {
         get_symbol();
 
         // cast: "(" "uint64_t" [ "*" ] ")"
         if (symbol == SYM_UINT64) {
-            has_cast = 1;
-
-            cast = compile_type();
+            type = compile_type();
 
             if (symbol == SYM_RPARENTHESIS)
                 get_symbol();
             else
                 syntax_error_symbol(SYM_RPARENTHESIS);
 
-            // not a cast: "(" expression ")"
-        } else {
+            compile_factor();
+        }
+        // not a cast: "(" expression ")"
+        else {
             type = compile_expression();
 
             if (symbol == SYM_RPARENTHESIS)
                 get_symbol();
             else
                 syntax_error_symbol(SYM_RPARENTHESIS);
-
-            // assert: allocated_temporaries == n + 1
-
-            return type;
         }
-    } else
-        has_cast = 0;
 
-    // optional: -
-    if (symbol == SYM_MINUS) {
-        negative = 1;
-
+    } else if (symbol == SYM_MINUS) {
         integer_is_signed = 1;
-
         get_symbol();
-
         integer_is_signed = 0;
-    } else
-        negative = 0;
 
-    // optional: dereference
-    if (symbol == SYM_ASTERISK) {
-        dereference = 1;
+        type = compile_factor();
 
+        if (type != UINT64_T) {
+            type_warning(UINT64_T, type);
+
+            type = UINT64_T;
+        }
+
+        emit_sub(current_temporary(), REG_ZR, current_temporary());
+
+    } else if (symbol == SYM_ASTERISK) {
         get_symbol();
-    } else
-        dereference = 0;
 
-    // variable or call?
-    if (symbol == SYM_IDENTIFIER) {
+        type = compile_factor();
+
+        if (type != UINT64STAR_T)
+            type_warning(UINT64STAR_T, type);
+
+        // dereference
+        emit_load(current_temporary(), current_temporary(), 0);
+
+        type = UINT64_T;
+
+    } else if (symbol == SYM_NOT) {
+        get_symbol();
+
+        type = compile_factor();
+
+        // JJTODO: emit bw not
+
+    } else if (symbol == SYM_LNOT) {
+        get_symbol();
+
+        compile_factor();
+
+        // JJTODO: emit lgl not
+
+        type = UINT64_T;
+
+    } else if (symbol == SYM_IDENTIFIER) {
         variable_or_procedure_name = identifier;
 
         get_symbol();
@@ -4611,12 +4709,12 @@ uint64_t compile_factor() {
             // reset return register to initial return value
             // for missing return expressions
             emit_addi(REG_A0, REG_ZR, 0);
+
         } else
             // variable access: identifier
             type =
                 load_variable_or_big_int(variable_or_procedure_name, VARIABLE);
 
-        // integer literal?
     } else if (symbol == SYM_INTEGER) {
         load_integer(literal);
 
@@ -4624,7 +4722,6 @@ uint64_t compile_factor() {
 
         type = UINT64_T;
 
-        // character literal?
     } else if (symbol == SYM_CHARACTER) {
         talloc();
 
@@ -4634,7 +4731,6 @@ uint64_t compile_factor() {
 
         type = UINT64_T;
 
-        // string literal?
     } else if (symbol == SYM_STRING) {
         load_string(string);
 
@@ -4642,48 +4738,15 @@ uint64_t compile_factor() {
 
         type = UINT64STAR_T;
 
-        //  "(" expression ")"
-    } else if (symbol == SYM_LPARENTHESIS) {
-        get_symbol();
-
-        type = compile_expression();
-
-        if (symbol == SYM_RPARENTHESIS)
-            get_symbol();
-        else
-            syntax_error_symbol(SYM_RPARENTHESIS);
     } else {
         syntax_error_unexpected();
 
         type = UINT64_T;
     }
 
-    if (dereference) {
-        if (type != UINT64STAR_T)
-            type_warning(UINT64STAR_T, type);
-
-        // dereference
-        emit_load(current_temporary(), current_temporary(), 0);
-
-        type = UINT64_T;
-    }
-
-    if (negative) {
-        if (type != UINT64_T) {
-            type_warning(UINT64_T, type);
-
-            type = UINT64_T;
-        }
-
-        emit_sub(current_temporary(), REG_ZR, current_temporary());
-    }
-
     // assert: allocated_temporaries == n + 1
 
-    if (has_cast)
-        return cast;
-    else
-        return type;
+    return type;
 }
 
 uint64_t compile_term() {
@@ -4807,7 +4870,7 @@ uint64_t compile_simple_expression() {
     return ltype;
 }
 
-uint64_t compile_expression() {
+uint64_t compile_shift_expression() {
     uint64_t ltype;
     uint64_t operator_symbol;
     uint64_t rtype;
@@ -4818,13 +4881,72 @@ uint64_t compile_expression() {
 
     // assert: allocated_temporaries == n + 1
 
-    // optional: ==, !=, <, >, <=, >= simple_expression
-    if (is_comparison()) {
+    // << or >> ?
+    while (is_left_or_right_shift()) {
         operator_symbol = symbol;
 
         get_symbol();
 
         rtype = compile_simple_expression();
+
+        // assert: allocated_temporaries == n + 2
+
+        if (operator_symbol == SYM_SHL) {
+            if (rtype == UINT64STAR_T) {
+                if (ltype == UINT64STAR_T)
+                    // UINT64STAR_T << UINT64STAR_T
+                    syntax_error_message(
+                        "(uint64_t*) << (uint64_t*) is undefined");
+                else
+                    // UINT64_T << UINT64STAR_T
+                    syntax_error_message(
+                        "(uint64_t) << (uint64_t*) is undefined");
+            }
+
+            // JJTODO: emit shift left
+
+        } else if (operator_symbol == SYM_SHR) {
+            if (rtype == UINT64STAR_T) {
+                if (ltype == UINT64STAR_T)
+                    // UINT64STAR_T >> UINT64STAR_T
+                    syntax_error_message(
+                        "(uint64_t*) >> (uint64_t*) is undefined");
+                else
+                    // UINT64_T >> UINT64STAR_T
+                    syntax_error_message(
+                        "(uint64_t) >> (uint64_t*) is undefined");
+            }
+
+            // JJTODO: emit shift right
+
+        }
+
+        tfree(1);
+    }
+
+    // assert: allocated_temporaries == n + 1
+
+    return ltype;
+}
+
+uint64_t compile_r_lt_expression() {
+    uint64_t ltype;
+    uint64_t operator_symbol;
+    uint64_t rtype;
+
+    // assert: n = allocated_temporaries
+
+    ltype = compile_shift_expression();
+
+    // assert: allocated_temporaries == n + 1
+
+    // optional: <, >, <=, >= shift_expression
+    if (is_lt_comparison()) {
+        operator_symbol = symbol;
+
+        get_symbol();
+
+        rtype = compile_shift_expression();
 
         // assert: allocated_temporaries == n + 2
 
@@ -4834,26 +4956,7 @@ uint64_t compile_expression() {
         // for lack of boolean type
         ltype = UINT64_T;
 
-        if (operator_symbol == SYM_EQUALITY) {
-            // a == b iff unsigned b - a < 1
-            emit_sub(previous_temporary(), current_temporary(),
-                     previous_temporary());
-            emit_addi(current_temporary(), REG_ZR, 1);
-            emit_sltu(previous_temporary(), previous_temporary(),
-                      current_temporary());
-
-            tfree(1);
-
-        } else if (operator_symbol == SYM_NOTEQ) {
-            // a != b iff unsigned 0 < b - a
-            emit_sub(previous_temporary(), current_temporary(),
-                     previous_temporary());
-
-            tfree(1);
-
-            emit_sltu(current_temporary(), REG_ZR, current_temporary());
-
-        } else if (operator_symbol == SYM_LT) {
+        if (operator_symbol == SYM_LT) {
             // a < b
             emit_sltu(previous_temporary(), previous_temporary(),
                       current_temporary());
@@ -4892,6 +4995,222 @@ uint64_t compile_expression() {
     // assert: allocated_temporaries == n + 1
 
     return ltype;
+}
+
+uint64_t compile_r_eq_expression() {
+    uint64_t ltype;
+    uint64_t operator_symbol;
+    uint64_t rtype;
+
+    // assert: n = allocated_temporaries
+
+    ltype = compile_r_lt_expression();
+
+    // assert: allocated_temporaries == n + 1
+
+    // optional: ==, != r_lt_expression
+    if (is_eq_comparison()) {
+        operator_symbol = symbol;
+
+        get_symbol();
+
+        rtype = compile_r_lt_expression();
+
+        // assert: allocated_temporaries == n + 2
+
+        if (ltype != rtype)
+            type_warning(ltype, rtype);
+
+        // for lack of boolean type
+        ltype = UINT64_T;
+
+        if (operator_symbol == SYM_EQUALITY) {
+            // a == b iff unsigned b - a < 1
+            emit_sub(previous_temporary(), current_temporary(),
+                     previous_temporary());
+            emit_addi(current_temporary(), REG_ZR, 1);
+            emit_sltu(previous_temporary(), previous_temporary(),
+                      current_temporary());
+
+            tfree(1);
+
+        } else if (operator_symbol == SYM_NOTEQ) {
+            // a != b iff unsigned 0 < b - a
+            emit_sub(previous_temporary(), current_temporary(),
+                     previous_temporary());
+
+            tfree(1);
+
+            emit_sltu(current_temporary(), REG_ZR, current_temporary());
+
+        }
+    }
+
+    // assert: allocated_temporaries == n + 1
+
+    return ltype;
+}
+
+uint64_t compile_b_and_expression() {
+    uint64_t ltype;
+
+    // assert: n = allocated_temporaries
+
+    ltype = compile_r_eq_expression();
+
+    // assert: allocated_temporaries == n + 1
+
+    // & ?
+    while (symbol == SYM_AND) {
+
+        get_symbol();
+
+        compile_r_eq_expression();
+
+        ltype = UINT64_T;
+
+        // assert: allocated_temporaries == n + 2
+
+        // JJTODO: emit bitwise and
+
+        tfree(1);
+    }
+
+    // assert: allocated_temporaries == n + 1
+
+    return ltype;
+}
+
+uint64_t compile_b_xor_expression() {
+    uint64_t ltype;
+
+    // assert: n = allocated_temporaries
+
+    ltype = compile_b_and_expression();
+
+    // assert: allocated_temporaries == n + 1
+
+    // ^ ?
+    while (symbol == SYM_XOR) {
+
+        get_symbol();
+
+        compile_b_and_expression();
+
+        ltype = UINT64_T;
+
+        // assert: allocated_temporaries == n + 2
+
+        // JJTODO: emit bitwise xor
+
+        tfree(1);
+    }
+
+    // assert: allocated_temporaries == n + 1
+
+    return ltype;
+}
+
+uint64_t compile_b_or_expression() {
+    uint64_t ltype;
+
+    // assert: n = allocated_temporaries
+
+    ltype = compile_b_xor_expression();
+
+    // assert: allocated_temporaries == n + 1
+
+    // | ?
+    while (symbol == SYM_OR) {
+
+        get_symbol();
+
+        compile_b_xor_expression();
+
+        ltype = UINT64_T;
+
+        // assert: allocated_temporaries == n + 2
+
+        // JJTODO: emit bitwise or
+
+        tfree(1);
+    }
+
+    // assert: allocated_temporaries == n + 1
+
+    return ltype;
+}
+
+uint64_t compile_l_and_expression() {
+    uint64_t ltype;
+
+    // assert: n = allocated_temporaries
+
+    ltype = compile_b_or_expression();
+
+    // assert: allocated_temporaries == n + 1
+
+    // && ?
+    while (symbol == SYM_LAND) {
+
+        get_symbol();
+
+        compile_b_or_expression();
+
+        ltype = UINT64_T;
+
+        // assert: allocated_temporaries == n + 2
+
+        // JJTODO: emit lgl and
+
+        tfree(1);
+    }
+
+    // assert: allocated_temporaries == n + 1
+
+    return ltype;
+}
+
+uint64_t compile_l_or_expression() {
+    uint64_t ltype;
+
+    // assert: n = allocated_temporaries
+
+    ltype = compile_l_and_expression();
+
+    // assert: allocated_temporaries == n + 1
+
+    // || ?
+    while (symbol == SYM_LOR) {
+
+        get_symbol();
+
+        compile_l_and_expression();
+
+        ltype = UINT64_T;
+
+        // assert: allocated_temporaries == n + 2
+
+        // JJTODO: emit lgl or
+
+        tfree(1);
+    }
+
+    // assert: allocated_temporaries == n + 1
+
+    return ltype;
+}
+
+uint64_t compile_expression() {
+    uint64_t type;
+
+    // assert: n = allocated_temporaries
+
+    type = compile_l_or_expression();
+
+    // assert: allocated_temporaries == n + 1
+
+    return type;
 }
 
 void compile_while() {
@@ -5904,8 +6223,7 @@ void selfie_compile() {
 
     ELF_header = encode_elf_header();
 
-    printf3("%s: symbol table search time was %u iterations on average and %u "
-            "in total\n",
+    printf3("%s: symbol table search time was %u iterations on average and %u in total\n",
             selfie_name, (char*)(total_search_time / number_of_searches),
             (char*)total_search_time);
 
@@ -6909,8 +7227,7 @@ void selfie_output(char* filename) {
         exit(EXITCODE_IOERROR);
     }
 
-    printf5("%s: %u bytes with %u instructions and %u bytes of data written "
-            "into %s\n",
+    printf5("%s: %u bytes with %u instructions and %u bytes of data written into %s\n",
             selfie_name, (char*)(ELF_HEADER_SIZE + code_size + data_size),
             (char*)(code_size / INSTRUCTIONSIZE), (char*)data_size,
             binary_name);
@@ -6995,8 +7312,7 @@ void selfie_load() {
                     // check if we are really at EOF
                     if (read(fd, binary_buffer, SIZEOFUINT64) == 0) {
                         printf5(
-                            "%s: %u bytes with %u instructions and %u bytes of "
-                            "data loaded from %s\n",
+                            "%s: %u bytes with %u instructions and %u bytes of data loaded from %s\n",
                             selfie_name,
                             (char*)(ELF_HEADER_SIZE + code_size + data_size),
                             (char*)(code_size / INSTRUCTIONSIZE),
@@ -7051,9 +7367,7 @@ void implement_exit(uint64_t* context) {
 
     set_exit_code(context, sign_shrink(signed_int_exit_code, SYSCALL_BITWIDTH));
 
-    printf1("%s: "
-            "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
-            "<<<<<<<<<<<<<<\n",
+    printf1("%s: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n",
             selfie_name);
     printf3("%s: %s exiting with exit code %d\n", selfie_name,
             get_name(context),
@@ -7110,8 +7424,7 @@ void implement_read(uint64_t* context) {
     size = *(get_regs(context) + REG_A2);
 
     if (debug_read)
-        printf4("%s: trying to read %u bytes from file with descriptor %u into "
-                "buffer at virtual address %p\n",
+        printf4("%s: trying to read %u bytes from file with descriptor %u into buffer at virtual address %p\n",
                 selfie_name, (char*)size, (char*)fd, (char*)vbuffer);
 
     read_total = 0;
@@ -7150,8 +7463,7 @@ void implement_read(uint64_t* context) {
 
                     size = 0;
 
-                    printf2("%s: reading into virtual address %p failed "
-                            "because the address is unmapped\n",
+                    printf2("%s: reading into virtual address %p failed because the address is unmapped\n",
                             selfie_name, (char*)vbuffer);
                 }
             else {
@@ -7159,8 +7471,7 @@ void implement_read(uint64_t* context) {
 
                 size = 0;
 
-                printf2("%s: reading into virtual address %p failed because "
-                        "the address is in an invalid segment\n",
+                printf2("%s: reading into virtual address %p failed because the address is in an invalid segment\n",
                         selfie_name, (char*)vbuffer);
             }
         else {
@@ -7168,8 +7479,7 @@ void implement_read(uint64_t* context) {
 
             size = 0;
 
-            printf2("%s: reading into virtual address %p failed because the "
-                    "address is invalid\n",
+            printf2("%s: reading into virtual address %p failed because the address is invalid\n",
                     selfie_name, (char*)vbuffer);
         }
     }
@@ -7241,8 +7551,7 @@ void implement_write(uint64_t* context) {
     size = *(get_regs(context) + REG_A2);
 
     if (debug_write)
-        printf4("%s: trying to write %u bytes from buffer at virtual address "
-                "%p into file with descriptor %u\n",
+        printf4("%s: trying to write %u bytes from buffer at virtual address %p into file with descriptor %u\n",
                 selfie_name, (char*)size, (char*)vbuffer, (char*)fd);
 
     written_total = 0;
@@ -7281,8 +7590,7 @@ void implement_write(uint64_t* context) {
 
                     size = 0;
 
-                    printf2("%s: writing from virtual address %p failed "
-                            "because the address is unmapped\n",
+                    printf2("%s: writing from virtual address %p failed because the address is unmapped\n",
                             selfie_name, (char*)vbuffer);
                 }
             else {
@@ -7290,8 +7598,7 @@ void implement_write(uint64_t* context) {
 
                 size = 0;
 
-                printf2("%s: writing from virtual address %p failed because "
-                        "the address is in an invalid segment\n",
+                printf2("%s: writing from virtual address %p failed because the address is in an invalid segment\n",
                         selfie_name, (char*)vbuffer);
             }
         else {
@@ -7299,8 +7606,7 @@ void implement_write(uint64_t* context) {
 
             size = 0;
 
-            printf2("%s: writing from virtual address %p failed because the "
-                    "address is invalid\n",
+            printf2("%s: writing from virtual address %p failed because the address is invalid\n",
                     selfie_name, (char*)vbuffer);
         }
     }
@@ -7359,8 +7665,7 @@ uint64_t down_load_string(uint64_t* context, uint64_t vaddr, char* s) {
                     *((uint64_t*)s + i) =
                         load_virtual_memory(get_pt(context), vaddr);
                 else {
-                    printf2("%s: opening file failed because the file name "
-                            "address %p is unmapped\n",
+                    printf2("%s: opening file failed because the file name address %p is unmapped\n",
                             selfie_name, (char*)vaddr);
 
                     return 0;
@@ -7382,23 +7687,20 @@ uint64_t down_load_string(uint64_t* context, uint64_t vaddr, char* s) {
                 // advance to the next word in our memory
                 i = i + 1;
             } else {
-                printf2("%s: opening file failed because the file name address "
-                        "%p is in an invalid segment\n",
+                printf2("%s: opening file failed because the file name address %p is in an invalid segment\n",
                         selfie_name, (char*)vaddr);
 
                 return 0;
             }
         else {
-            printf2("%s: opening file failed because the file name address %p "
-                    "is invalid\n",
+            printf2("%s: opening file failed because the file name address %p is invalid\n",
                     selfie_name, (char*)vaddr);
 
             return 0;
         }
     }
 
-    printf2("%s: opening file failed because the file name is too long at "
-            "address %p\n",
+    printf2("%s: opening file failed because the file name is too long at address %p\n",
             selfie_name, (char*)vaddr);
 
     return 0;
@@ -7447,8 +7749,7 @@ void implement_openat(uint64_t* context) {
         *(get_regs(context) + REG_A0) = fd;
 
         if (debug_open)
-            printf5("%s: opened file %s with flags %x and mode %o returning "
-                    "file descriptor %u\n",
+            printf5("%s: opened file %s with flags %x and mode %o returning file descriptor %u\n",
                     selfie_name, filename_buffer, (char*)flags, (char*)mode,
                     (char*)fd);
     } else
@@ -8461,9 +8762,7 @@ void gc_collect(uint64_t* context) {
 }
 
 void print_gc_profile(uint64_t* context) {
-    printf1("%s: "
-            "------------------------------------------------------------------"
-            "--------------\n",
+    printf1("%s: --------------------------------------------------------------------------------\n",
             selfie_name);
     printf5(
         "%s: gc:      %.2uMB requested in %u mallocs (%u gced, %u reuses)\n",
@@ -8477,8 +8776,7 @@ void print_gc_profile(uint64_t* context) {
     printf3("%s: gc:      %.2uMB collected in %u gc runs\n", selfie_name,
             (char*)ratio_format(gc_mem_collected, MEGABYTE),
             (char*)gc_num_collects);
-    printf6("%s: gc:      %.2uMB(%.2u%%) allocated in %u mallocs (%u gced, %u "
-            "ungced)\n",
+    printf6("%s: gc:      %.2uMB(%.2u%%) allocated in %u mallocs (%u gced, %u ungced)\n",
             selfie_name,
             (char*)ratio_format(gc_mem_objects + gc_mem_metadata, MEGABYTE),
             (char*)percentage_format(gc_mem_mallocated,
@@ -9179,8 +9477,7 @@ void do_ecall() {
 
             exit(EXITCODE_UNSUPPORTEDSYSCALL);
         } else if (symbolic) {
-            printf1("%s: context switching during symbolic execution is "
-                    "unsupported\n",
+            printf1("%s: context switching during symbolic execution is unsupported\n",
                     selfie_name);
 
             exit(EXITCODE_UNSUPPORTEDSYSCALL);
@@ -9328,8 +9625,7 @@ void selfie_disassemble(uint64_t verbose) {
     output_name = (char*)0;
     output_fd = 1;
 
-    printf5("%s: %u characters of assembly with %u instructions and %u bytes "
-            "of data written into %s\n",
+    printf5("%s: %u characters of assembly with %u instructions and %u bytes of data written into %s\n",
             selfie_name, (char*)number_of_written_characters,
             (char*)(code_size / INSTRUCTIONSIZE), (char*)data_size,
             assembly_name);
@@ -9559,8 +9855,7 @@ void decode() {
             // report the error on the console
             output_fd = 1;
 
-            printf4("%s: at address %p unknown instruction %x with opcode %x "
-                    "detected\n",
+            printf4("%s: at address %p unknown instruction %x with opcode %x detected\n",
                     selfie_name, (char*)pc, (char*)ir, (char*)opcode);
 
             exit(EXITCODE_UNKNOWNINSTRUCTION);
@@ -9916,9 +10211,7 @@ void print_register_memory_profile() {
 }
 
 void print_profile(uint64_t* context) {
-    printf1("%s: "
-            "------------------------------------------------------------------"
-            "--------------\n",
+    printf1("%s: --------------------------------------------------------------------------------\n",
             selfie_name);
     printf3("%s: summary: %u executed instructions [%.2u%% nops]\n",
             selfie_name, (char*)get_total_number_of_instructions(),
@@ -9940,9 +10233,7 @@ void print_profile(uint64_t* context) {
         print_gc_profile(context);
 
     if (get_total_number_of_instructions() > 0) {
-        printf1("%s: "
-                "--------------------------------------------------------------"
-                "------------------\n",
+        printf1("%s: --------------------------------------------------------------------------------\n",
                 selfie_name);
         print_instruction_counters();
 
@@ -9964,9 +10255,7 @@ void print_profile(uint64_t* context) {
         print_register_memory_profile();
     }
 
-    printf1("%s: "
-            "------------------------------------------------------------------"
-            "--------------\n",
+    printf1("%s: --------------------------------------------------------------------------------\n",
             selfie_name);
 }
 
@@ -10747,9 +11036,7 @@ uint64_t mipster(uint64_t* to_context) {
     uint64_t* from_context;
 
     print("mipster\n");
-    printf1("%s: "
-            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-            ">>>>>>>>>>>>>>\n",
+    printf1("%s: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n",
             selfie_name);
 
     timeout = TIMESLICE;
@@ -10777,9 +11064,7 @@ uint64_t hypster(uint64_t* to_context) {
     uint64_t* from_context;
 
     print("hypster\n");
-    printf1("%s: "
-            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-            ">>>>>>>>>>>>>>\n",
+    printf1("%s: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n",
             selfie_name);
 
     while (1) {
@@ -10801,9 +11086,7 @@ uint64_t mixter(uint64_t* to_context, uint64_t mix) {
 
     printf2("mixter (%u%% mipster/%u%% hypster)\n", (char*)mix,
             (char*)(100 - mix));
-    printf1("%s: "
-            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-            ">>>>>>>>>>>>>>\n",
+    printf1("%s: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n",
             selfie_name);
 
     mslice = TIMESLICE;
@@ -10911,9 +11194,7 @@ void map_unmapped_pages(uint64_t* context) {
 
 uint64_t minster(uint64_t* to_context) {
     print("minster\n");
-    printf1("%s: "
-            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-            ">>>>>>>>>>>>>>\n",
+    printf1("%s: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n",
             selfie_name);
 
     // virtual is like physical memory in initial context up to memory size
@@ -10927,9 +11208,7 @@ uint64_t minster(uint64_t* to_context) {
 
 uint64_t mobster(uint64_t* to_context) {
     print("mobster\n");
-    printf1("%s: "
-            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-            ">>>>>>>>>>>>>>\n",
+    printf1("%s: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n",
             selfie_name);
 
     // does not handle page faults, relies on fancy hypsters to do that
@@ -11122,8 +11401,7 @@ uint64_t no_or_bad_or_more_arguments(uint64_t exit_code) {
 }
 
 void print_synopsis(char* extras) {
-    printf2("synopsis: %s { -c { source } | -o binary | [ -s | -S ] assembly | "
-            "-l binary }%s\n",
+    printf2("synopsis: %s { -c { source } | -o binary | [ -s | -S ] assembly | -l binary }%s\n",
             selfie_name, extras);
 }
 

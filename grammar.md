@@ -11,6 +11,7 @@ C\* is a tiny subset of the programming language C. C\* features global variable
 C\* Keywords: `uint64_t`, `void`, `if`, `else`, `while`, `return`
 
 C\* Symbols: `integer_literal`, `character_literal`, `string_literal`, `identifier`, `,`, `;`, `(`, `)`, `{`, `}`, `+`, `-`, `*`, `/`, `%`, `=`, `==`, `!=`, `<`, `<=`, `>`, `>=`
+C\* Symbols added as exercise: `&&`, `||`, `!`, `<<`, `>>`, `|`, `&`, `~`, `^`
 
 with:
 
@@ -68,14 +69,37 @@ statement         = ( [ "*" ] identifier | "*" "(" expression ")" ) "=" expressi
 
 call              = identifier "(" [ expression { "," expression } ] ")" .
 
-expression        = simple_expression
-                    [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) simple_expression ] .
+expression        = l_or_expression .
+
+l_or_expression   = l_and_expression
+                    { "||" l_and_expression } .
+
+l_and_expression  = b_or_expression
+                    { "&&" b_or_expression } .
+
+b_or_expression   = b_xor_expression
+                    { "|" b_xor_expression } .
+
+b_xor_expression  = b_and_expression
+                    { "^" b_and_expression } .
+
+b_and_expression  = r_eq_expression
+                    { "&" r_eq_expression } .
+
+r_eq_expression   = r_lt_expression
+                    [ ( "==" | "!=" ) r_lt_expression ] .
+
+r_lt_expression   = shift_expression
+                    [ ( "<" | ">" | "<=" | ">=" ) shift_expression ] .
+
+shift_expression  = simple_expression
+                    { ( "<<" | ">>" ) simple_expression } .
 
 simple_expression = term { ( "+" | "-" ) term } .
 
 term              = factor { ( "*" | "/" | "%" ) factor } .
 
-factor            = [ cast ] [ "-" ] [ "*" ]
+factor            = ( "!" | "~" | "-" | "*" | cast ) factor |
                     ( integer_literal | character_literal | string_literal |
                       identifier | call | "(" expression ")" ) .
 
