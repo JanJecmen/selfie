@@ -1,0 +1,15 @@
+{
+    "C_Cpp.formatting": "clangFormat",
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "files.trimTrailingWhitespace": true,
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/*.d": true,
+        "**/*.ts": true,
+        "**/*.o": true
+    }
+}
