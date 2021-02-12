@@ -16,6 +16,8 @@ uint64_t main() {
     uint64_t a;
     uint64_t b;
 
+    init_library();
+
     print("Tests for && (logical AND)\n");
     a = 1; b = 1; if (eval(a) && eval(b)) print("okay\n"); else print("fail\n");
     a = 1; b = 0; if (eval(a) && eval(b)) print("fail\n"); else print("okay\n");
