@@ -44,6 +44,22 @@ The parameter `imm` denotes a signed integer value represented by a fixed number
 
 `remu rd,rs1,rs2`: `rd = rs1 % rs2; pc = pc + 4` where `rs1` and `rs2` are unsigned integers.
 
+#### Shifts
+
+`sll rd,rs1,rs2`: `rd = rs1 << rs2; pc = pc + 4` where `rs1` and `rs2` are unsigned integers.
+
+`srl rd,rs1,rs2`: `rd = rs1 >> rs2; pc = pc + 4` where `rs1` and `rs2` are unsigned integers.
+
+#### Logical
+
+`and rd,rs1,rs2`:  `rd = rs1 & rs2; pc = pc + 4`
+
+`or rd,rs1,rs2`: `rd = rs1 | rs2; pc = pc + 4`
+
+`xor rd,rs1,rs2`: `rd = rs1 | rs2; pc = pc + 4`
+
+`xori rd,rs1,imm`: `rd = rs1 ^ rs2; pc = pc + 4`
+
 #### Comparison
 
 `sltu rd,rs1,rs2`: `if (rs1 < rs2) { rd = 1 } else { rd = 0 } pc = pc + 4` where `rs1` and `rs2` are unsigned integers.
@@ -51,6 +67,8 @@ The parameter `imm` denotes a signed integer value represented by a fixed number
 #### Control
 
 `beq rs1,rs2,imm`: `if (rs1 == rs2) { pc = pc + imm } else { pc = pc + 4 }` with `-2^12 <= imm < 2^12` and `imm % 2 == 0`
+
+`bne rs1,rs2,imm`: `if (rs1 != rs2) { pc = pc + imm } else { pc = pc + 4 }` with `-2^12 <= imm < 2^12` and `imm % 2 == 0`
 
 `jal rd,imm`: `rd = pc + 4; pc = pc + imm` with `-2^20 <= imm < 2^20` and `imm % 2 == 0`
 

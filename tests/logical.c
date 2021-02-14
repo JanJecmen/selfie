@@ -23,9 +23,19 @@ uint64_t main() {
     a = 1; b = 0; if (eval(a) && eval(b)) print("fail\n"); else print("okay\n");
     a = 0; b = 1; if (eval(a) && dont_eval(b)) print("fail\n"); else print("okay\n");
     a = 0; b = 0; if (eval(a) && dont_eval(b)) print("fail\n"); else print("okay\n");
+    a = 1; b = 0; if (eval(a) && eval(b) && dont_eval(b) && dont_eval(b)) print("fail\n"); else print("okay\n");
 
-    // print("Tests for || (logical OR)\n");
-    // print("Tests for ! (logical NOT)\n");
+    print("Tests for || (logical OR)\n");
+    a = 1; b = 1; if (eval(a) || dont_eval(b)) print("okay\n"); else print("fail\n");
+    a = 1; b = 0; if (eval(a) || dont_eval(b)) print("okay\n"); else print("fail\n");
+    a = 0; b = 1; if (eval(a) || eval(b)) print("okay\n"); else print("fail\n");
+    a = 0; b = 0; if (eval(a) || eval(b)) print("fail\n"); else print("okay\n");
+    a = 0; b = 1; if (eval(a) || eval(b) || dont_eval(b) || dont_eval(a)) print("okay\n"); else print("fail\n");
+
+    print("Tests for ! (logical NOT)\n");
+    a = 1; if (!a) print("fail\n"); else print("okay\n");
+    a = 0; if (!a) print("okay\n"); else print("fail\n");
+    a = 1; if (!!a) print("okay\n"); else print("fail\n");
 
     return 0;
 }

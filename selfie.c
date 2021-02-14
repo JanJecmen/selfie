@@ -905,7 +905,7 @@ uint64_t OP_IMM = 19;     // 0010011, I format (ADDI, NOP)
 uint64_t OP_STORE = 35;   // 0100011, S format (SD,SW)
 uint64_t OP_OP = 51;      // 0110011, R format (ADD, SUB, MUL, DIVU, REMU, SLTU)
 uint64_t OP_LUI = 55;     // 0110111, U format (LUI)
-uint64_t OP_BRANCH = 99;  // 1100011, B format (BEQ)
+uint64_t OP_BRANCH = 99;  // 1100011, B format (BEQ, BNE)
 uint64_t OP_JALR = 103;   // 1100111, I format (JALR)
 uint64_t OP_JAL = 111;    // 1101111, J format (JAL)
 uint64_t OP_SYSTEM = 115; // 1110011, I format (ECALL)
@@ -924,6 +924,7 @@ uint64_t F3_SD = 3;    // 011
 uint64_t F3_LW = 2;    // 010
 uint64_t F3_SW = 2;    // 010
 uint64_t F3_BEQ = 0;   // 000
+uint64_t F3_BNE = 1;   // 001
 uint64_t F3_JALR = 0;  // 000
 uint64_t F3_ECALL = 0; // 000
 
@@ -982,6 +983,7 @@ void emit_nop();
 
 void emit_lui(uint64_t rd, uint64_t immediate);
 void emit_addi(uint64_t rd, uint64_t rs1, uint64_t immediate);
+void emit_xori(uint64_t rd, uint64_t rs1, uint64_t immediate) {}
 
 void emit_add(uint64_t rd, uint64_t rs1, uint64_t rs2);
 void emit_sub(uint64_t rd, uint64_t rs1, uint64_t rs2);
@@ -990,10 +992,17 @@ void emit_divu(uint64_t rd, uint64_t rs1, uint64_t rs2);
 void emit_remu(uint64_t rd, uint64_t rs1, uint64_t rs2);
 void emit_sltu(uint64_t rd, uint64_t rs1, uint64_t rs2);
 
+void emit_xor(uint64_t rd, uint64_t rs1, uint64_t rs2) {}
+void emit_and(uint64_t rd, uint64_t rs1, uint64_t rs2) {}
+void emit_or(uint64_t rd, uint64_t rs1, uint64_t rs2) {}
+void emit_sll(uint64_t rd, uint64_t rs1, uint64_t rs2) {}
+void emit_srl(uint64_t rd, uint64_t rs1, uint64_t rs2) {}
+
 void emit_load(uint64_t rd, uint64_t rs1, uint64_t immediate);
 void emit_store(uint64_t rs1, uint64_t immediate, uint64_t rs2);
 
 void emit_beq(uint64_t rs1, uint64_t rs2, uint64_t immediate);
+void emit_bne(uint64_t rs1, uint64_t rs2, uint64_t immediate);
 
 void emit_jal(uint64_t rd, uint64_t immediate);
 void emit_jalr(uint64_t rd, uint64_t rs1, uint64_t immediate);
@@ -1002,7 +1011,8 @@ void emit_ecall();
 
 void fixup_relative_BFormat(uint64_t from_address);
 void fixup_relative_JFormat(uint64_t from_address, uint64_t to_address);
-void fixlink_relative(uint64_t from_address, uint64_t to_address);
+void fixlink_relative_branch(uint64_t from_address, uint64_t f3);
+void fixlink_relative_jump(uint64_t from_address, uint64_t to_address);
 
 void emit_data_word(uint64_t data, uint64_t offset,
                     uint64_t source_line_number);
@@ -1111,9 +1121,16 @@ uint64_t ic_sltu = 0;
 uint64_t ic_load = 0;
 uint64_t ic_store = 0;
 uint64_t ic_beq = 0;
+uint64_t ic_bne = 0;
 uint64_t ic_jal = 0;
 uint64_t ic_jalr = 0;
 uint64_t ic_ecall = 0;
+uint64_t ic_and = 0;
+uint64_t ic_or = 0;
+uint64_t ic_xor = 0;
+uint64_t ic_xori = 0;
+uint64_t ic_sll = 0;
+uint64_t ic_srl = 0;
 
 char* binary_name = (char*)0; // file name of binary
 
@@ -1146,9 +1163,16 @@ void reset_instruction_counters() {
     ic_load = 0;
     ic_store = 0;
     ic_beq = 0;
+    ic_bne = 0;
     ic_jal = 0;
     ic_jalr = 0;
     ic_ecall = 0;
+    ic_and = 0;
+    ic_or = 0;
+    ic_xor = 0;
+    ic_xori = 0;
+    ic_sll = 0;
+    ic_srl = 0;
 }
 
 // -----------------------------------------------------------------
@@ -1540,6 +1564,12 @@ void print_beq_after();
 void record_beq();
 void do_beq();
 
+void print_bne();
+void print_bne_before();
+void print_bne_after();
+void record_bne();
+void do_bne();
+
 void print_jal();
 void print_jal_before();
 void print_jal_jalr_after();
@@ -1573,9 +1603,16 @@ uint64_t SLTU = 8;
 uint64_t LOAD = 9;
 uint64_t STORE = 10;
 uint64_t BEQ = 11;
-uint64_t JAL = 12;
-uint64_t JALR = 13;
-uint64_t ECALL = 14;
+uint64_t BNE = 12;
+uint64_t JAL = 13;
+uint64_t JALR = 14;
+uint64_t ECALL = 15;
+uint64_t AND = 16;
+uint64_t OR = 17;
+uint64_t XOR = 18;
+uint64_t XORI = 19;
+uint64_t SLL = 20;
+uint64_t SRL = 21;
 
 uint64_t* MNEMONICS; // assembly mnemonics of instructions
 
@@ -1599,7 +1636,7 @@ uint64_t assembly_fd = 0;       // file descriptor of open assembly file
 // ------------------------- INITIALIZATION ------------------------
 
 void init_disassembler() {
-    MNEMONICS = smalloc((ECALL + 1) * SIZEOFUINT64STAR);
+    MNEMONICS = smalloc((SRL + 1) * SIZEOFUINT64STAR);
 
     *(MNEMONICS + LUI) = (uint64_t) "lui";
     *(MNEMONICS + ADDI) = (uint64_t) "addi";
@@ -1617,9 +1654,16 @@ void init_disassembler() {
         *(MNEMONICS + STORE) = (uint64_t) "sw";
     }
     *(MNEMONICS + BEQ) = (uint64_t) "beq";
+    *(MNEMONICS + BNE) = (uint64_t) "bne";
     *(MNEMONICS + JAL) = (uint64_t) "jal";
     *(MNEMONICS + JALR) = (uint64_t) "jalr";
     *(MNEMONICS + ECALL) = (uint64_t) "ecall";
+    *(MNEMONICS + AND) = (uint64_t) "and";
+    *(MNEMONICS + OR) = (uint64_t) "or";
+    *(MNEMONICS + XOR) = (uint64_t) "xor";
+    *(MNEMONICS + XORI) = (uint64_t) "xori";
+    *(MNEMONICS + SLL) = (uint64_t) "sll";
+    *(MNEMONICS + SRL) = (uint64_t) "srl";
 }
 
 // -----------------------------------------------------------------
@@ -1772,8 +1816,15 @@ uint64_t nopc_sltu = 0;
 uint64_t nopc_load = 0;
 uint64_t nopc_store = 0;
 uint64_t nopc_beq = 0;
+uint64_t nopc_bne = 0;
 uint64_t nopc_jal = 0;
 uint64_t nopc_jalr = 0;
+uint64_t nopc_and = 0;
+uint64_t nopc_or = 0;
+uint64_t nopc_xor = 0;
+uint64_t nopc_xori = 0;
+uint64_t nopc_sll = 0;
+uint64_t nopc_srl = 0;
 
 // source profile
 
@@ -1861,8 +1912,15 @@ void reset_nop_counters() {
     nopc_load = 0;
     nopc_store = 0;
     nopc_beq = 0;
+    nopc_bne = 0;
     nopc_jal = 0;
     nopc_jalr = 0;
+    nopc_and = 0;
+    nopc_or = 0;
+    nopc_xor = 0;
+    nopc_xori = 0;
+    nopc_sll = 0;
+    nopc_srl = 0;
 }
 
 void reset_source_profile() {
@@ -4609,6 +4667,8 @@ uint64_t compile_call(char* procedure) {
 
 uint64_t compile_factor() {
     uint64_t type;
+    uint64_t branch_addr;
+    uint64_t jump_addr;
     char* variable_or_procedure_name;
 
     // assert: n = allocated_temporaries
@@ -4679,14 +4739,26 @@ uint64_t compile_factor() {
 
         type = compile_factor();
 
-        // JJTODO: emit bw not
+        emit_xori(current_temporary(), current_temporary(), -1);
 
     } else if (symbol == SYM_LNOT) {
         get_symbol();
 
         compile_factor();
 
-        // JJTODO: emit lgl not
+        branch_addr = code_size;
+        emit_beq(current_temporary(), REG_ZR, 0);
+
+        emit_addi(current_temporary(), REG_ZR, 0);
+
+        jump_addr = code_size;
+        emit_jal(REG_ZR, 0);
+
+        fixup_relative_BFormat(branch_addr);
+
+        emit_addi(current_temporary(), REG_ZR, 1);
+
+        fixup_relative_JFormat(jump_addr, code_size);
 
         type = UINT64_T;
 
@@ -4903,7 +4975,8 @@ uint64_t compile_shift_expression() {
                         "(uint64_t) << (uint64_t*) is undefined");
             }
 
-            // JJTODO: emit shift left
+            emit_sll(previous_temporary(), previous_temporary(),
+                     current_temporary());
 
         } else if (operator_symbol == SYM_SHR) {
             if (rtype == UINT64STAR_T) {
@@ -4917,8 +4990,8 @@ uint64_t compile_shift_expression() {
                         "(uint64_t) >> (uint64_t*) is undefined");
             }
 
-            // JJTODO: emit shift right
-
+            emit_srl(previous_temporary(), previous_temporary(),
+                     current_temporary());
         }
 
         tfree(1);
@@ -5071,7 +5144,8 @@ uint64_t compile_b_and_expression() {
 
         // assert: allocated_temporaries == n + 2
 
-        // JJTODO: emit bitwise and
+        emit_and(previous_temporary(), previous_temporary(),
+                 current_temporary());
 
         tfree(1);
     }
@@ -5101,7 +5175,8 @@ uint64_t compile_b_xor_expression() {
 
         // assert: allocated_temporaries == n + 2
 
-        // JJTODO: emit bitwise xor
+        emit_xor(previous_temporary(), previous_temporary(),
+                  current_temporary());
 
         tfree(1);
     }
@@ -5131,7 +5206,8 @@ uint64_t compile_b_or_expression() {
 
         // assert: allocated_temporaries == n + 2
 
-        // JJTODO: emit bitwise or
+        emit_or(previous_temporary(), previous_temporary(),
+                current_temporary());
 
         tfree(1);
     }
@@ -5143,6 +5219,11 @@ uint64_t compile_b_or_expression() {
 
 uint64_t compile_l_and_expression() {
     uint64_t ltype;
+    uint64_t have_rhs;
+    uint64_t branch_addr;
+    uint64_t jump_addr;
+
+    have_rhs = 0;
 
     // assert: n = allocated_temporaries
 
@@ -5150,29 +5231,55 @@ uint64_t compile_l_and_expression() {
 
     // assert: allocated_temporaries == n + 1
 
-    // && ?
-    while (symbol == SYM_LAND) {
+    if (symbol == SYM_LAND) {
+        have_rhs = 1;
+        ltype = UINT64_T;
+        branch_addr = code_size;
+        // will be replaced by beq in fixup (need more imm bits than 12)
+        emit_jal(current_temporary(), 0);
+    }
 
+    while (symbol == SYM_LAND) {
         get_symbol();
 
         compile_b_or_expression();
 
-        ltype = UINT64_T;
-
         // assert: allocated_temporaries == n + 2
 
-        // JJTODO: emit lgl and
+        // will be replaced by beq in fixup (need more imm bits than 12)
+        emit_jal(current_temporary(), branch_addr);
+        branch_addr = code_size - INSTRUCTIONSIZE;
 
         tfree(1);
     }
 
     // assert: allocated_temporaries == n + 1
 
+    if (have_rhs) {
+        emit_addi(current_temporary(), REG_ZR, 1);
+
+        jump_addr = code_size;
+        emit_jal(REG_ZR, 0);
+
+        // replace jumps by beq
+        fixlink_relative_branch(branch_addr, F3_BEQ);
+
+        // current temporary is now the most lhs -> maybe non-zero
+        emit_addi(current_temporary(), REG_ZR, 0);
+
+        fixup_relative_JFormat(jump_addr, code_size);
+    }
+
     return ltype;
 }
 
 uint64_t compile_l_or_expression() {
     uint64_t ltype;
+    uint64_t have_rhs;
+    uint64_t branch_addr;
+    uint64_t jump_addr;
+
+    have_rhs = 0;
 
     // assert: n = allocated_temporaries
 
@@ -5180,23 +5287,44 @@ uint64_t compile_l_or_expression() {
 
     // assert: allocated_temporaries == n + 1
 
-    // || ?
-    while (symbol == SYM_LOR) {
+    if (symbol == SYM_LOR) {
+        have_rhs = 1;
+        ltype = UINT64_T;
+        branch_addr = code_size;
+        // will be replaced by bne in fixup (need more imm bits than 12)
+        emit_jal(current_temporary(), 0);
+    }
 
+    while (symbol == SYM_LOR) {
         get_symbol();
 
         compile_l_and_expression();
 
-        ltype = UINT64_T;
-
         // assert: allocated_temporaries == n + 2
 
-        // JJTODO: emit lgl or
+        // will be replaced by bne in fixup (need more imm bits than 12)
+        emit_jal(current_temporary(), branch_addr);
+        branch_addr = code_size - INSTRUCTIONSIZE;
 
         tfree(1);
     }
 
     // assert: allocated_temporaries == n + 1
+
+    if (have_rhs) {
+        emit_addi(current_temporary(), REG_ZR, 0);
+
+        jump_addr = code_size;
+        emit_jal(REG_ZR, 0);
+
+        // replace jumps by bne
+        fixlink_relative_branch(branch_addr, F3_BNE);
+
+        // current temporary is now the most lhs -> maybe non-one
+        emit_addi(current_temporary(), REG_ZR, 1);
+
+        fixup_relative_JFormat(jump_addr, code_size);
+    }
 
     return ltype;
 }
@@ -5760,7 +5888,7 @@ void compile_procedure(char* procedure, uint64_t type) {
                 // procedure already called or defined
                 if (get_opcode(load_instruction(get_address(entry))) == OP_JAL)
                     // procedure already called but not defined
-                    fixlink_relative(get_address(entry), code_size);
+                    fixlink_relative_jump(get_address(entry), code_size);
                 else
                     // procedure already defined
                     is_undefined = 0;
@@ -5828,7 +5956,7 @@ void compile_procedure(char* procedure, uint64_t type) {
             exit(EXITCODE_PARSERERROR);
         }
 
-        fixlink_relative(return_branches, code_size);
+        fixlink_relative_jump(return_branches, code_size);
 
         return_branches = 0;
 
@@ -6672,13 +6800,15 @@ void decode_u_format() {
 
 uint64_t get_total_number_of_instructions() {
     return ic_lui + ic_addi + ic_add + ic_sub + ic_mul + ic_divu + ic_remu +
-           ic_sltu + ic_load + ic_store + ic_beq + ic_jal + ic_jalr + ic_ecall;
+           ic_sltu + ic_load + ic_store + ic_beq + ic_bne + ic_jal + ic_jalr +
+           ic_ecall + ic_and + ic_or + ic_xor + ic_xori + ic_sll + ic_srl;
 }
 
 uint64_t get_total_number_of_nops() {
     return nopc_lui + nopc_addi + nopc_add + nopc_sub + nopc_mul + nopc_divu +
            nopc_remu + nopc_sltu + nopc_load + nopc_store + nopc_beq +
-           nopc_jal + nopc_jalr;
+           nopc_bne + nopc_jal + nopc_jalr + nopc_and + nopc_or + nopc_xor +
+           nopc_xori + nopc_sll + nopc_srl;
 }
 
 void print_instruction_counter(uint64_t counter, uint64_t ins) {
@@ -6722,12 +6852,30 @@ void print_instruction_counters() {
     print_instruction_counter_with_nops(ic_remu, nopc_remu, REMU);
     println();
 
+    printf1("%s: compute: ", selfie_name);
+    print_instruction_counter_with_nops(ic_and, nopc_and, AND);
+    print(", ");
+    print_instruction_counter_with_nops(ic_or, nopc_or, OR);
+    print(", ");
+    print_instruction_counter_with_nops(ic_xor, nopc_xor, XOR);
+    println();
+
+    printf1("%s: compute: ", selfie_name);
+    print_instruction_counter_with_nops(ic_xori, nopc_xori, XORI);
+    print(", ");
+    print_instruction_counter_with_nops(ic_sll, nopc_sll, SLL);
+    print(", ");
+    print_instruction_counter_with_nops(ic_srl, nopc_srl, SRL);
+    println();
+
     printf1("%s: compare: ", selfie_name);
     print_instruction_counter_with_nops(ic_sltu, nopc_sltu, SLTU);
     println();
 
     printf1("%s: control: ", selfie_name);
     print_instruction_counter_with_nops(ic_beq, nopc_beq, BEQ);
+    print(", ");
+    print_instruction_counter_with_nops(ic_bne, nopc_bne, BNE);
     print(", ");
     print_instruction_counter_with_nops(ic_jal, nopc_jal, JAL);
     print(", ");
@@ -6884,6 +7032,12 @@ void emit_beq(uint64_t rs1, uint64_t rs2, uint64_t immediate) {
     ic_beq = ic_beq + 1;
 }
 
+void emit_bne(uint64_t rs1, uint64_t rs2, uint64_t immediate) {
+    emit_instruction(encode_b_format(immediate, rs2, rs1, F3_BNE, OP_BRANCH));
+
+    ic_bne = ic_bne + 1;
+}
+
 void emit_jal(uint64_t rd, uint64_t immediate) {
     emit_instruction(encode_j_format(immediate, rd, OP_JAL));
 
@@ -6925,7 +7079,30 @@ void fixup_relative_JFormat(uint64_t from_address, uint64_t to_address) {
                                                     get_opcode(instruction)));
 }
 
-void fixlink_relative(uint64_t from_address, uint64_t to_address) {
+void fixlink_relative_branch(uint64_t from_address, uint64_t f3) {
+    uint64_t instruction;
+    uint64_t previous_address;
+
+    while (from_address != 0) {
+
+        instruction = load_instruction(from_address);
+
+        previous_address = get_immediate_j_format(instruction);
+
+        store_instruction(from_address,
+                          encode_b_format(code_size - from_address, REG_ZR,
+                                          get_rd(instruction), f3, OP_BRANCH));
+        ic_jal = ic_jal - 1;
+        if (f3 == F3_BEQ)
+            ic_beq = ic_beq + 1;
+        else
+            ic_bne = ic_bne + 1;
+
+        from_address = previous_address;
+    }
+}
+
+void fixlink_relative_jump(uint64_t from_address, uint64_t to_address) {
     uint64_t previous_address;
 
     while (from_address != 0) {
@@ -9332,6 +9509,44 @@ void do_beq() {
     ic_beq = ic_beq + 1;
 }
 
+void print_bne() {
+    print_code_context_for_instruction(pc);
+    printf4("%s %s,%s,%d", get_mnemonic(is), get_register_name(rs1),
+            get_register_name(rs2),
+            (char*)signed_division(imm, INSTRUCTIONSIZE));
+    if (disassemble_verbose)
+        printf1("[%x]", (char*)(pc + imm));
+}
+
+void print_bne_before() {
+    print(": ");
+    print_register_value(rs1);
+    print(",");
+    print_register_value(rs2);
+    printf1(" |- pc=%x", (char*)pc);
+}
+
+void print_bne_after() { printf1(" -> pc=%x", (char*)pc); }
+
+void record_bne() { record_state(0); }
+
+void do_bne() {
+    // branch on equal
+
+    update_register_counters();
+
+    // semantics of bne
+    if (*(registers + rs1) != *(registers + rs2))
+        pc = pc + imm;
+    else {
+        pc = pc + INSTRUCTIONSIZE;
+
+        nopc_bne = nopc_bne + 1;
+    }
+
+    ic_bne = ic_bne + 1;
+}
+
 void print_jal() {
     print_code_context_for_instruction(pc);
     printf3("%s %s,%d", get_mnemonic(is), get_register_name(rd),
@@ -9558,6 +9773,8 @@ void print_instruction() {
         print_add_sub_mul_divu_remu_sltu();
     else if (is == BEQ)
         print_beq();
+    else if (is == BNE)
+        print_bne();
     else if (is == JAL)
         print_jal();
     else if (is == JALR)
@@ -9828,6 +10045,8 @@ void decode() {
 
         if (funct3 == F3_BEQ)
             is = BEQ;
+        else if (funct3 == F3_BNE)
+            is = BNE;
     } else if (opcode == OP_JAL) {
         decode_j_format();
 
@@ -9894,6 +10113,8 @@ void execute() {
         do_sltu();
     else if (is == BEQ)
         do_beq();
+    else if (is == BNE)
+        do_bne();
     else if (is == JAL)
         do_jal();
     else if (is == JALR)
@@ -9936,6 +10157,9 @@ void execute_record() {
     } else if (is == BEQ) {
         record_beq();
         do_beq();
+    } else if (is == BNE) {
+        record_bne();
+        do_bne();
     } else if (is == JAL) {
         record_lui_addi_add_sub_mul_divu_remu_sltu_jal_jalr();
         do_jal();
@@ -9957,6 +10181,9 @@ void execute_undo() {
         undo_store();
     else if (is == BEQ)
         // beq does not require any undo
+        return;
+    else if (is == BNE)
+        // bne does not require any undo
         return;
     else if (is == ECALL)
         undo_ecall();
@@ -10006,6 +10233,10 @@ void execute_debug() {
         print_beq_before();
         do_beq();
         print_beq_after();
+    } else if (is == BNE) {
+        print_bne_before();
+        do_bne();
+        print_bne_after();
     } else if (is == JAL) {
         print_jal_before();
         do_jal();
