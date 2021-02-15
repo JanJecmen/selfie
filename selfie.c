@@ -2460,7 +2460,7 @@ uint64_t get_bits(uint64_t n, uint64_t i, uint64_t b) {
         return n;
     else
         // cancel all bits from index 0 to i - 1
-        return right_shift(n, i);
+        return n >> i;
 }
 
 uint64_t absolute(uint64_t n) {
@@ -2563,10 +2563,9 @@ char* store_character(char* s, uint64_t i, uint64_t c) {
 
     // subtract the to-be-overwritten character to reset its bits in s
     // then add c to set its bits at the i-th position in s
-    *((uint64_t*)s + a) =
-        (*((uint64_t*)s + a) -
-         left_shift(load_character(s, i), (i % SIZEOFUINT64) * 8)) +
-        left_shift(c, (i % SIZEOFUINT64) * 8);
+    *((uint64_t*)s + a) = (*((uint64_t*)s + a) -
+                           (load_character(s, i) << (i % SIZEOFUINT64) * 8)) +
+                          (c << (i % SIZEOFUINT64) * 8);
 
     return s;
 }
@@ -6496,14 +6495,8 @@ uint64_t encode_r_format(uint64_t funct7, uint64_t rs2, uint64_t rs1,
     // assert: 0 <= rd < 2^5
     // assert: 0 <= opcode < 2^7
 
-    return left_shift(
-               left_shift(
-                   left_shift(left_shift(left_shift(funct7, 5) + rs2, 5) + rs1,
-                              3) +
-                       funct3,
-                   5) +
-                   rd,
-               7) +
+    return (((((((((funct7 << 5) + rs2) << 5) + rs1) << 3) + funct3) << 5) + rd)
+            << 7) +
            opcode;
 }
 
@@ -6555,11 +6548,7 @@ uint64_t encode_i_format(uint64_t immediate, uint64_t rs1, uint64_t funct3,
 
     immediate = sign_shrink(immediate, 12);
 
-    return left_shift(left_shift(left_shift(left_shift(immediate, 5) + rs1, 3) +
-                                     funct3,
-                                 5) +
-                          rd,
-                      7) +
+    return (((((((immediate << 5) + rs1) << 3) + funct3) << 5) + rd) << 7) +
            opcode;
 }
 
@@ -6602,14 +6591,8 @@ uint64_t encode_s_format(uint64_t immediate, uint64_t rs2, uint64_t rs1,
     imm1 = get_bits(immediate, 5, 7);
     imm2 = get_bits(immediate, 0, 5);
 
-    return left_shift(
-               left_shift(
-                   left_shift(left_shift(left_shift(imm1, 5) + rs2, 5) + rs1,
-                              3) +
-                       funct3,
-                   5) +
-                   imm2,
-               7) +
+    return (((((((((imm1 << 5) + rs2) << 5) + rs1) << 3) + funct3) << 5) + imm2)
+            << 7) +
            opcode;
 }
 
@@ -6620,7 +6603,7 @@ uint64_t get_immediate_s_format(uint64_t instruction) {
     imm1 = get_bits(instruction, 25, 7);
     imm2 = get_bits(instruction, 7, 5);
 
-    return sign_extend(left_shift(imm1, 5) + imm2, 12);
+    return sign_extend((imm1 << 5) + imm2, 12);
 }
 
 void decode_s_format() {
@@ -6663,21 +6646,13 @@ uint64_t encode_b_format(uint64_t immediate, uint64_t rs2, uint64_t rs1,
     imm3 = get_bits(immediate, 1, 4);
     imm4 = get_bits(immediate, 11, 1);
 
-    return left_shift(
-               left_shift(
-                   left_shift(
-                       left_shift(
-                           left_shift(
-                               left_shift(left_shift(imm1, 6) + imm2, 5) + rs2,
-                               5) +
-                               rs1,
-                           3) +
-                           funct3,
-                       4) +
-                       imm3,
-                   1) +
-                   imm4,
-               7) +
+    return (((((((((((((imm1 << 6) + imm2) << 5) + rs2) << 5) + rs1) << 3) +
+                 funct3)
+                << 4) +
+               imm3)
+              << 1) +
+             imm4)
+            << 7) +
            opcode;
 }
 
@@ -6694,11 +6669,7 @@ uint64_t get_immediate_b_format(uint64_t instruction) {
 
     // reassemble immediate and add trailing zero
     return sign_extend(
-        left_shift(
-            left_shift(left_shift(left_shift(imm1, 1) + imm4, 6) + imm2, 4) +
-                imm3,
-            1),
-        13);
+        (((((((imm1 << 1) + imm4) << 6) + imm2) << 4) + imm3) << 1), 13);
 }
 
 void decode_b_format() {
@@ -6738,14 +6709,8 @@ uint64_t encode_j_format(uint64_t immediate, uint64_t rd, uint64_t opcode) {
     imm3 = get_bits(immediate, 11, 1);
     imm4 = get_bits(immediate, 12, 8);
 
-    return left_shift(
-               left_shift(
-                   left_shift(left_shift(left_shift(imm1, 10) + imm2, 1) + imm3,
-                              8) +
-                       imm4,
-                   5) +
-                   rd,
-               7) +
+    return (((((((((imm1 << 10) + imm2) << 1) + imm3) << 8) + imm4) << 5) + rd)
+            << 7) +
            opcode;
 }
 
@@ -6762,11 +6727,7 @@ uint64_t get_immediate_j_format(uint64_t instruction) {
 
     // reassemble immediate and add trailing zero
     return sign_extend(
-        left_shift(
-            left_shift(left_shift(left_shift(imm1, 8) + imm4, 1) + imm3, 10) +
-                imm2,
-            1),
-        21);
+        (((((((imm1 << 8) + imm4) << 1) + imm3) << 10) + imm2) << 1), 21);
 }
 
 void decode_j_format() {
@@ -6796,7 +6757,7 @@ uint64_t encode_u_format(uint64_t immediate, uint64_t rd, uint64_t opcode) {
 
     immediate = sign_shrink(immediate, 20);
 
-    return left_shift(left_shift(immediate, 5) + rd, 7) + opcode;
+    return (((immediate << 5) + rd) << 7) + opcode;
 }
 
 uint64_t get_immediate_u_format(uint64_t instruction) {
@@ -6937,12 +6898,12 @@ void store_instruction(uint64_t caddr, uint64_t instruction) {
         store_code(caddr, instruction);
     else if (caddr % WORDSIZE == 0)
         // replace low word
-        store_code(caddr, left_shift(load_instruction(caddr + INSTRUCTIONSIZE),
-                                     INSTRUCTIONSIZEINBITS) +
+        store_code(caddr, (load_instruction(caddr + INSTRUCTIONSIZE)
+                           << INSTRUCTIONSIZEINBITS) +
                               instruction);
     else
         // replace high word
-        store_code(caddr, left_shift(instruction, INSTRUCTIONSIZEINBITS) +
+        store_code(caddr, (instruction << INSTRUCTIONSIZEINBITS) +
                               load_instruction(caddr - INSTRUCTIONSIZE));
 }
 
@@ -7247,37 +7208,34 @@ uint64_t* encode_elf_header() {
 
     if (IS64BITSYSTEM) {
         // RISC-U ELF64 file header
-        *(header + 0) = EI_MAG0 + left_shift(EI_MAG1, 8) +
-                        left_shift(EI_MAG2, 16) + left_shift(EI_MAG3, 24) +
-                        left_shift(EI_CLASS, 32) + left_shift(EI_DATA, 40) +
-                        left_shift(EI_VERSION, 48) + left_shift(EI_OSABI, 56);
-        *(header + 1) = EI_ABIVERSION + left_shift(EI_PAD, 8);
-        *(header + 2) =
-            e_type + left_shift(e_machine, 16) + left_shift(e_version, 32);
+        *(header + 0) = EI_MAG0 + (EI_MAG1 << 8) + (EI_MAG2 << 16) +
+                        (EI_MAG3 << 24) + (EI_CLASS << 32) + (EI_DATA << 40) +
+                        (EI_VERSION << 48) + (EI_OSABI << 56);
+        *(header + 1) = EI_ABIVERSION + (EI_PAD << 8);
+        *(header + 2) = e_type + (e_machine << 16) + (e_version << 32);
         *(header + 3) = e_entry;
         *(header + 4) = e_phoff;
         *(header + 5) = e_shoff;
-        *(header + 6) =
-            e_flags + left_shift(e_ehsize, 32) + left_shift(e_phentsize, 48);
-        *(header + 7) = e_phnum + left_shift(e_shentsize, 16) +
-                        left_shift(e_shnum, 32) + left_shift(e_shstrndx, 48);
+        *(header + 6) = e_flags + (e_ehsize << 32) + (e_phentsize << 48);
+        *(header + 7) = e_phnum + (e_shentsize << 16) + (e_shnum << 32) +
+                        (e_shstrndx << 48);
     } else {
         // RISC-U ELF32 file header
-        *(header + 0) = EI_MAG0 + left_shift(EI_MAG1, 8) +
-                        left_shift(EI_MAG2, 16) + left_shift(EI_MAG3, 24);
-        *(header + 1) = EI_CLASS + left_shift(EI_DATA, 8) +
-                        left_shift(EI_VERSION, 16) + left_shift(EI_OSABI, 24);
+        *(header + 0) =
+            EI_MAG0 + (EI_MAG1 << 8) + (EI_MAG2 << 16) + (EI_MAG3 << 24);
+        *(header + 1) =
+            EI_CLASS + (EI_DATA << 8) + (EI_VERSION << 16) + (EI_OSABI << 24);
         *(header + 2) = EI_ABIVERSION; // ignoring 24 LSBs of EI_PAD
         *(header + 3) = EI_PAD;        // ignoring 24 MSBs of EI_PAD
-        *(header + 4) = e_type + left_shift(e_machine, 16);
+        *(header + 4) = e_type + (e_machine << 16);
         *(header + 5) = e_version;
         *(header + 6) = e_entry;
         *(header + 7) = e_phoff;
         *(header + 8) = e_shoff;
         *(header + 9) = e_flags;
-        *(header + 10) = e_ehsize + left_shift(e_phentsize, 16);
-        *(header + 11) = e_phnum + left_shift(e_shentsize, 16);
-        *(header + 12) = e_shnum + left_shift(e_shstrndx, 16);
+        *(header + 10) = e_ehsize + (e_phentsize << 16);
+        *(header + 11) = e_phnum + (e_shentsize << 16);
+        *(header + 12) = e_shnum + (e_shstrndx << 16);
     }
 
     p_flags = 7; // code segment attributes are RWE (TODO: should be 5 for RE)
@@ -7311,7 +7269,7 @@ void encode_elf_program_header(uint64_t* header, uint64_t ph_index) {
 
     if (IS64BITSYSTEM) {
         // RISC-U ELF64 program header
-        *(header + ph_offset + 0) = p_type + left_shift(p_flags, 32);
+        *(header + ph_offset + 0) = p_type + (p_flags << 32);
         *(header + ph_offset + 1) = p_offset;
         *(header + ph_offset + 2) = p_vaddr;
         *(header + ph_offset + 3) = p_paddr;
@@ -9106,7 +9064,7 @@ void do_lui() {
 
     if (rd != REG_ZR) {
         // semantics of lui
-        next_rd_value = left_shift(imm, 12);
+        next_rd_value = imm << 12;
 
         if (*(registers + rd) != next_rd_value)
             *(registers + rd) = next_rd_value;
@@ -9804,7 +9762,7 @@ void do_jalr() {
     update_register_counters();
 
     // prepare jump rs1-relative with LSB reset
-    next_pc = left_shift(right_shift(*(registers + rs1) + imm, 1), 1);
+    next_pc = ((*(registers + rs1) + imm) >> 1) << 1;
 
     if (rd == REG_ZR) {
         // just jump
