@@ -2510,14 +2510,8 @@ uint64_t signed_division(uint64_t a, uint64_t b) {
 
 uint64_t is_signed_integer(uint64_t n, uint64_t b) {
     // assert: 0 < b <= SIZEOFUINT64INBITS
-    if (n < two_to_the_power_of(b - 1))
-        // assert: 0 <= n < 2^(b - 1)
-        return 1;
-    else if (n >= -two_to_the_power_of(b - 1))
-        // assert: -2^(b - 1) <= n < 2^64
-        return 1;
-    else
-        return 0;
+    // assert: 0 <= n < 2^(b - 1) || assert: -2^(b - 1) <= n < 2^64
+    return n < two_to_the_power_of(b - 1) || n >= -two_to_the_power_of(b - 1);
 }
 
 uint64_t sign_extend(uint64_t n, uint64_t b) {
@@ -2635,10 +2629,7 @@ uint64_t string_compare(char* s, char* t) {
 
     while (1)
         if (load_character(s, i) == 0)
-            if (load_character(t, i) == 0)
-                return 1;
-            else
-                return 0;
+            return load_character(t, i) == 0;
         else if (load_character(s, i) == load_character(t, i))
             i = i + 1;
         else
@@ -2650,15 +2641,10 @@ uint64_t atoi(char* s, uint64_t base) {
     uint64_t n;
     uint64_t c;
 
-    if (base != BASE_BINARY) {
-        if (base != BASE_OCTAL) {
-            if (base != BASE_DECIMAL) {
-                if (base != BASE_HEXADECIMAL) {
-                    printf2("%s: invalid base for number %s\n", selfie_name, s);
-                    exit(EXITCODE_SCANNERERROR);
-                }
-            }
-        }
+    if (base != BASE_BINARY && base != BASE_OCTAL && base != BASE_DECIMAL &&
+        base != BASE_HEXADECIMAL) {
+        printf2("%s: invalid base for number %s\n", selfie_name, s);
+        exit(EXITCODE_SCANNERERROR);
     }
 
     // the conversion of the ASCII string in s to its
@@ -2688,30 +2674,21 @@ uint64_t atoi(char* s, uint64_t base) {
             c = c - '0';
         }
 
-        if (base == BASE_BINARY) {
-            if (c > 1) {
-                printf2("%s: cannot convert non-binary number %s\n",
-                        selfie_name, s);
-                exit(EXITCODE_SCANNERERROR);
-            }
-        } else if (base == BASE_OCTAL) {
-            if (c > 7) {
-                printf2("%s: cannot convert non-octal number %s\n", selfie_name,
-                        s);
-                exit(EXITCODE_SCANNERERROR);
-            }
-        } else if (base == BASE_DECIMAL) {
-            if (c > 9) {
-                printf2("%s: cannot convert non-decimal number %s\n",
-                        selfie_name, s);
-                exit(EXITCODE_SCANNERERROR);
-            }
-        } else if (base == BASE_HEXADECIMAL) {
-            if (c > 15) {
-                printf2("%s: cannot convert non-hexadecimal number %s\n",
-                        selfie_name, s);
-                exit(EXITCODE_SCANNERERROR);
-            }
+        if (base == BASE_BINARY && c > 1) {
+            printf2("%s: cannot convert non-binary number %s\n", selfie_name,
+                    s);
+            exit(EXITCODE_SCANNERERROR);
+        } else if (base == BASE_OCTAL && c > 7) {
+            printf2("%s: cannot convert non-octal number %s\n", selfie_name, s);
+            exit(EXITCODE_SCANNERERROR);
+        } else if (base == BASE_DECIMAL && c > 9) {
+            printf2("%s: cannot convert non-decimal number %s\n", selfie_name,
+                    s);
+            exit(EXITCODE_SCANNERERROR);
+        } else if (base == BASE_HEXADECIMAL && c > 15) {
+            printf2("%s: cannot convert non-hexadecimal number %s\n",
+                    selfie_name, s);
+            exit(EXITCODE_SCANNERERROR);
         }
 
         // assert: s contains a number in base 2 or 8 or 10 or 16
@@ -2766,14 +2743,13 @@ char* itoa(uint64_t n, char* s, uint64_t b, uint64_t d, uint64_t a) {
 
         i = 1;
     } else if (d)
-        if (signed_less_than(n, 0))
-            if (b == 10) {
-                // n is represented as two's complement
-                // convert n to a positive number but remember the sign
-                n = -n;
+        if (signed_less_than(n, 0) && b == 10) {
+            // n is represented as two's complement
+            // convert n to a positive number but remember the sign
+            n = -n;
 
-                sign = 1;
-            }
+            sign = 1;
+        }
 
     while (n != 0) {
         if (n % b > 9)
@@ -2842,11 +2818,10 @@ uint64_t fixed_point_ratio(uint64_t a, uint64_t b, uint64_t f) {
     p = 0;
 
     while (p <= f) {
-        if (a <= UINT64_MAX / ten_to_the_power_of(f - p)) {
-            if (b / ten_to_the_power_of(p) != 0)
-                return (a * ten_to_the_power_of(f - p)) /
-                       (b / ten_to_the_power_of(p));
-        }
+        if (a <= UINT64_MAX / ten_to_the_power_of(f - p) &&
+            b / ten_to_the_power_of(p) != 0)
+            return (a * ten_to_the_power_of(f - p)) /
+                   (b / ten_to_the_power_of(p));
 
         p = p + 1;
     }
@@ -3379,21 +3354,12 @@ void get_character() {
 }
 
 uint64_t is_character_new_line() {
-    if (character == CHAR_LF)
-        return 1;
-    else if (character == CHAR_CR)
-        return 1;
-    else
-        return 0;
+    return character == CHAR_LF || character == CHAR_CR;
 }
 
 uint64_t is_character_whitespace() {
-    if (character == CHAR_SPACE)
-        return 1;
-    else if (character == CHAR_TAB)
-        return 1;
-    else
-        return is_character_new_line();
+    return character == CHAR_SPACE || character == CHAR_TAB ||
+           is_character_new_line();
 }
 
 uint64_t find_next_character() {
@@ -3509,71 +3475,29 @@ uint64_t find_next_character() {
 
 uint64_t is_character_letter() {
     // ASCII codes for lower- and uppercase letters are in contiguous intervals
-    if (character >= 'a')
-        if (character <= 'z')
-            return 1;
-        else
-            return 0;
-    else if (character >= 'A')
-        if (character <= 'Z')
-            return 1;
-        else
-            return 0;
-    else
-        return 0;
+    return (character >= 'a' && character <= 'z') ||
+           (character >= 'A' && character <= 'Z');
 }
 
 uint64_t is_character_digit(uint64_t base) {
     // ASCII codes for digits are in a contiguous interval
-    if (base == BASE_BINARY) {
-        if (character >= '0')
-            if (character <= '1')
-                return 1;
-    } else if (base == BASE_OCTAL) {
-        if (character >= '0')
-            if (character <= '7')
-                return 1;
-    } else if (base == BASE_DECIMAL) {
-        if (character >= '0')
-            if (character <= '9')
-                return 1;
-    } else if (base == BASE_HEXADECIMAL) {
-        if (character >= '0') {
-            if (character <= '9')
-                return 1;
-        }
-        if (character >= 'a') {
-            if (character <= 'f')
-                return 1;
-        }
-        if (character >= 'A') {
-            if (character <= 'F')
-                return 1;
-        }
-    }
-    return 0;
+    return (base == BASE_BINARY && character >= '0' && character <= '1') ||
+           (base == BASE_OCTAL && character >= '0' && character <= '7') ||
+           (base == BASE_DECIMAL && character >= '0' && character <= '9') ||
+           (base == BASE_HEXADECIMAL &&
+            ((character >= '0' && character <= '9') ||
+             (character >= 'a' && character <= 'f') ||
+             (character >= 'A' && character <= 'F')));
 }
 
 uint64_t is_character_letter_or_digit_or_underscore() {
-    if (is_character_letter())
-        return 1;
-    else if (is_character_digit(BASE_DECIMAL))
-        return 1;
-    else if (character == CHAR_UNDERSCORE)
-        return 1;
-    else
-        return 0;
+    return is_character_letter() || is_character_digit(BASE_DECIMAL) ||
+           character == CHAR_UNDERSCORE;
 }
 
 uint64_t is_character_not_double_quote_or_new_line_or_eof() {
-    if (character == CHAR_DOUBLEQUOTE)
-        return 0;
-    else if (is_character_new_line())
-        return 0;
-    else if (character == CHAR_EOF)
-        return 0;
-    else
-        return 1;
+    return character != CHAR_DOUBLEQUOTE && !is_character_new_line() &&
+           character != CHAR_EOF;
 }
 
 uint64_t identifier_string_match(uint64_t keyword) {
